@@ -41,8 +41,8 @@ Also, if enabled, this extension improves dataset form look'n'feel. See [Dataset
 
 ## Requirements
 
-The ckanext-dcatapit extension is compatible with CKAN 2.9 and Python 3.7 (master branch).  
-Previous version ([tagged `dcatapit-1.0.0`](https://github.com/geosolutions-it/ckanext-dcatapit/tree/dcatapit-1.0.0) has been developed for CKAN 2.4 and should be compatible with CKAN upto 2.8.
+The ckanext-dcatapit extension is compatible with CKAN 2.11.x and Python 3.10 (master branch).  
+Previous version ([tagged `dcatapit-1.0.0`](https://github.com/geosolutions-it/ckanext-dcatapit/tree/dcatapit-1.0.0) has been developed for CKAN 2.4 and should be compatible with CKAN upto 2.11.x
 
 The dcatap-it plugins extend the functionalities of the [ckanext-dcat plugins](https://github.com/ckan/ckanext-dcat).
 
