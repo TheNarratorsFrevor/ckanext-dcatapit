@@ -7,7 +7,9 @@ import ckan.plugins.toolkit as toolkit
 from ckan import lib, logic
 from ckan.common import config
 from flask import Blueprint
-from routes.mapper import SubMapper
+
+# from routes.mapper import SubMapper
+from ckanext.dcatapit.controllers.api import get_blueprints
 
 import ckanext.dcatapit.helpers as helpers
 import ckanext.dcatapit.interfaces as interfaces
@@ -21,6 +23,9 @@ from ckanext.dcatapit.mapping import populate_theme_groups
 from ckanext.dcatapit.controllers.thesaurus import ThesaurusController, get_thesaurus_admin_page, update_vocab_admin
 from ckanext.dcatapit.model.license import License
 from ckanext.dcatapit.schema import FIELD_THEMES_AGGREGATE
+import ckan.logic.action.create as action_create
+import ckan.logic.action.update as action_update
+import ckan.logic.action.get as action_get
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +51,9 @@ class DCATAPITPackagePlugin(plugins.SingletonPlugin, toolkit.DefaultDatasetForm,
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IValidators)
     plugins.implements(plugins.ITemplateHelpers)
-    plugins.implements(plugins.IRoutes, inherit=True)
+    # IRoutes is deprecated for CKAN 2.10
+    # plugins.implements(plugins.IRoutes, inherit=True)
+    plugins.implements(plugins.IBlueprint, inherit=True)
     plugins.implements(plugins.IPackageController, inherit=True)
     plugins.implements(plugins.IFacets, inherit=True)
     plugins.implements(plugins.ITranslation, inherit=True)
@@ -63,6 +70,7 @@ class DCATAPITPackagePlugin(plugins.SingletonPlugin, toolkit.DefaultDatasetForm,
     def i18n_domain(self):
         return 'ckanext-dcatapit'
 
+    '''
     # ------------- IRoutes ---------------#
 
     def before_map(self, map):
@@ -74,6 +82,19 @@ class DCATAPITPackagePlugin(plugins.SingletonPlugin, toolkit.DefaultDatasetForm,
             m.connect('/util/vocabulary/autocomplete', action='vocabulary_autocomplete',
                       conditions=GET)
         return map
+    '''
+
+    #--------------IBlueprint -----------------#
+    # from ckanext.dcatapit.controllers.api import dcatapit_blp
+    # from flask_smorest import Api
+
+    # ckan.config["api"] = "/util/vocabulary/autocomplete" 
+    # api = Api(ckan)
+    #api.register_blueprint(dcatapit_blp)
+
+
+    def get_blueprint(self):
+        return get_blueprints()
 
     # ------------- IConfigurer ---------------#
 
@@ -537,7 +558,7 @@ class DCATAPITPackagePlugin(plugins.SingletonPlugin, toolkit.DefaultDatasetForm,
             return pkg_dict
         if not (pkg_dict.get('holder_identifier') and pkg_dict.get('holder_name')):
             if not pkg_dict.get('owner_org'):
-                return pkg_dict
+                raise logic.ValidationError({'owner_org': [_('Dataset must belong to an organization to automatically populate rights holder information')]})
             if org is None:
                 get_org = toolkit.get_action('organization_show')
                 ctx = get_org_context()
@@ -551,8 +572,17 @@ class DCATAPITPackagePlugin(plugins.SingletonPlugin, toolkit.DefaultDatasetForm,
                                     'include_followers': False,
                                     'include_datasets': False,
                                     })
+            
+            # Ensure organization has required fields for rights holder
+            if not org.get('title'):
+                raise logic.ValidationError({'holder_name': [_('Organization must have a title to be used as rights holder name')]})
+            
+            org_identifier = org.get('identifier')
+            if not org_identifier:
+                raise logic.ValidationError({'holder_identifier': [_('Organization must have an identifier (IPA/IVA code) to be used as rights holder identifier')]})
+            
             pkg_dict['holder_name'] = org['title']
-            pkg_dict['holder_identifier'] = org.get('identifier') or None
+            pkg_dict['holder_identifier'] = org_identifier
         return pkg_dict
 
     def edit_template(self):
@@ -582,6 +612,10 @@ class DCATAPITOrganizationPlugin(plugins.SingletonPlugin, toolkit.DefaultOrganiz
 
     # IGroupForm
     plugins.implements(plugins.IGroupForm, inherit=True)
+    # IGroupController: ensure custom org fields are present in returned dicts
+    plugins.implements(plugins.IGroupController, inherit=True)
+    # IActions: provide wrappers for organization actions to ensure extras are saved
+    plugins.implements(plugins.IActions, inherit=True)
 
     # ------------- IConfigurer ---------------#
 
@@ -621,6 +655,8 @@ class DCATAPITOrganizationPlugin(plugins.SingletonPlugin, toolkit.DefaultOrganiz
         if schema:
             return schema
 
+        log.debug('DCATAPITOrganizationPlugin.form_to_db_schema_options called with options: %r', options)
+
         if options.get('api'):
             if options.get('type') == 'create':
                 return self.form_to_db_schema_api_create()
@@ -631,23 +667,33 @@ class DCATAPITOrganizationPlugin(plugins.SingletonPlugin, toolkit.DefaultOrganiz
 
     def form_to_db_schema_api_create(self):
         schema = logic.schema.default_group_schema()
+        log.debug('DCATAPITOrganizationPlugin.form_to_db_schema_api_create called')
         schema = self._modify_group_schema(schema)
         return schema
 
     def form_to_db_schema_api_update(self):
         schema = logic.schema.default_update_group_schema()
+        log.debug('DCATAPITOrganizationPlugin.form_to_db_schema_api_update called')
         schema = self._modify_group_schema(schema)
         return schema
 
     def form_to_db_schema(self):
         schema = logic.schema.group_form_schema()
+        log.debug('DCATAPITOrganizationPlugin.form_to_db_schema called')
         schema = self._modify_group_schema(schema)
         return schema
 
     def _modify_group_schema(self, schema):
         TO_EXTRAS = toolkit.get_converter('convert_to_extras')
 
-        for field in dcatapit_schema.get_custom_organization_schema():
+        fields = dcatapit_schema.get_custom_organization_schema()
+        try:
+            field_names = [f.get('name') for f in fields]
+        except Exception:
+            field_names = []
+        log.debug('DCATAPITOrganizationPlugin._modify_group_schema adding convert_to_extras to fields: %r', field_names)
+
+        for field in fields:
             schema[field['name']] = [toolkit.get_validator(v) for v in field['validator']] + [ TO_EXTRAS ]
 
         return schema
@@ -660,10 +706,130 @@ class DCATAPITOrganizationPlugin(plugins.SingletonPlugin, toolkit.DefaultOrganiz
 
         FROM_EXTRAS = toolkit.get_converter('convert_from_extras')
 
-        for field in dcatapit_schema.get_custom_organization_schema():
+        fields = dcatapit_schema.get_custom_organization_schema()
+        try:
+            field_names = [f.get('name') for f in fields]
+        except Exception:
+            field_names = []
+        log.debug('DCATAPITOrganizationPlugin.db_to_form_schema preparing converters for fields: %r', field_names)
+
+        for field in fields:
             schema[field['name']] = [ FROM_EXTRAS ] + [toolkit.get_validator(v) for v in field['validator']]
 
         return schema
+
+    # IGroupController hooks: ensure custom fields are present on create/update/show
+    def after_create(self, context, obj_dict):
+        """Ensure custom organization fields appear in the returned dict after create."""
+        try:
+            extras = obj_dict.get('extras') or []
+            fields = dcatapit_schema.get_custom_organization_schema()
+            field_names = [f.get('name') for f in fields]
+
+            # Populate top-level keys from extras if missing
+            for f in fields:
+                fname = f.get('name')
+                if fname not in obj_dict:
+                    val = next((e.get('value') for e in extras if e.get('key') == fname), '')
+                    obj_dict[fname] = val
+
+            # Remove those keys from the extras list so they don't show up as "Extra fields" in the UI
+            if extras:
+                obj_dict['extras'] = [e for e in extras if e.get('key') not in field_names]
+        except Exception:
+            log.exception('Error populating custom org fields in after_create')
+        return obj_dict
+
+    def after_update(self, context, obj_dict):
+        """Ensure custom organization fields appear in the returned dict after update."""
+        try:
+            extras = obj_dict.get('extras') or []
+            fields = dcatapit_schema.get_custom_organization_schema()
+            field_names = [f.get('name') for f in fields]
+
+            for f in fields:
+                fname = f.get('name')
+                if fname not in obj_dict:
+                    val = next((e.get('value') for e in extras if e.get('key') == fname), '')
+                    obj_dict[fname] = val
+
+            if extras:
+                obj_dict['extras'] = [e for e in extras if e.get('key') not in field_names]
+        except Exception:
+            log.exception('Error populating custom org fields in after_update')
+        return obj_dict
+
+    def before_show(self, obj_dict):
+        """Populate fields when an organization is shown (ensure they exist even if empty)."""
+        try:
+            extras = obj_dict.get('extras') or []
+            fields = dcatapit_schema.get_custom_organization_schema()
+            field_names = [f.get('name') for f in fields]
+
+            for f in fields:
+                fname = f.get('name')
+                if fname not in obj_dict:
+                    val = next((e.get('value') for e in extras if e.get('key') == fname), '')
+                    obj_dict[fname] = val
+
+            if extras:
+                obj_dict['extras'] = [e for e in extras if e.get('key') not in field_names]
+        except Exception:
+            log.exception('Error populating custom org fields in before_show')
+        return obj_dict
+
+    def get_actions(self):
+        """Return action wrappers for organization create/update/show.
+
+        These wrappers collect known DCAT-AP-IT organization fields from the
+        incoming data_dict into the `extras` list so they are persisted
+        reliably regardless of converter wiring, and they ensure the
+        returned dict always contains the expected top-level keys.
+        HACK: This is the dumbest shit ever, but CKAN's action system does not
+        provide a clean way to handle custom fields on organizations.
+        If you are smarter than me, please fix this.
+        """
+        def _collect_into_extras(data_dict):
+            extras = data_dict.get('extras') or []
+            fields = dcatapit_schema.get_custom_organization_schema()
+            for f in fields:
+                name = f.get('name')
+                if name in data_dict:
+                    val = data_dict.pop(name)
+                    extras.append({'key': name, 'value': val})
+            if extras:
+                data_dict['extras'] = extras
+
+        def _populate_top_level_from_extras(obj_dict):
+            extras = obj_dict.get('extras') or []
+            for f in dcatapit_schema.get_custom_organization_schema():
+                name = f.get('name')
+                if name not in obj_dict:
+                    val = next((e.get('value') for e in extras if e.get('key') == name), '')
+                    obj_dict[name] = val
+
+        def org_create(context, data_dict):
+            _collect_into_extras(data_dict)
+            result = action_create.organization_create(context, data_dict)
+            _populate_top_level_from_extras(result)
+            return result
+
+        def org_update(context, data_dict):
+            _collect_into_extras(data_dict)
+            result = action_update.organization_update(context, data_dict)
+            _populate_top_level_from_extras(result)
+            return result
+
+        def org_show(context, data_dict):
+            result = action_get.organization_show(context, data_dict)
+            _populate_top_level_from_extras(result)
+            return result
+
+        return {
+            'organization_create': org_create,
+            'organization_update': org_update,
+            'organization_show': org_show,
+        }
 
 
 class DCATAPITConfigurerPlugin(plugins.SingletonPlugin):

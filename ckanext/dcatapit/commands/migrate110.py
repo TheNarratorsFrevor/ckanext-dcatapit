@@ -113,6 +113,8 @@ def do_migrate_data(limit=None, offset=None, skip_orgs=False, pkg_uuid: list = N
         update_identifier(pdata)
         update_modified(pdata)
         update_frequency(pdata)
+        # ensure notes is present to satisfy validators that require it
+        update_notes(pdata)
         update_conforms_to(pdata)
         update_holder_info(pdata)
         interfaces.populate_resource_license(pdata)
@@ -410,6 +412,33 @@ def update_modified(pdata):
         )
         data = datetime.now()
     pdata['modified'] = datetime.now().strftime('%Y-%m-%d')
+
+
+def update_notes(pdata):
+    """Ensure `notes` exists on the package so validators requiring it pass.
+
+    Prefer existing `notes`, else fall back to `description`, else a safe placeholder.
+    """
+    if pdata.get('notes'):
+        return
+    # try to find notes in extras
+    notes = pdata.pop('notes', None)
+    if not notes:
+        for idx, ex in enumerate(pdata.get('extras') or []):
+            if ex.get('key') == 'notes':
+                notes = ex.get('value')
+                # remove from extras
+                pdata['extras'].pop(idx)
+                break
+
+    if not notes:
+        # try description
+        notes = pdata.get('description') or pdata.get('title')
+
+    if not notes:
+        notes = 'No notes provided'
+
+    pdata['notes'] = notes
 
 
 TEMP_IPA_CODE = 'tmp_ipa_code'

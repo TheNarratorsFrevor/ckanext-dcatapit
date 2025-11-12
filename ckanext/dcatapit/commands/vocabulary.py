@@ -7,14 +7,20 @@ from rdflib.term import URIRef
 
 from sqlalchemy.exc import IntegrityError
 
-from ckan.lib.base import config, model
+# from ckan.lib.base import config, model
+import ckan.model as model
+# from ckantoolkit import config
+from ckan.common import config
+
 from ckan.lib.munge import munge_tag
 from ckan.model import Vocabulary
 from ckan.model.meta import Session
 import ckan.plugins.toolkit as toolkit
 
-from ckanext.dcat.profiles import DCT
-from ckanext.dcat.profiles import namespaces as dcat_namespaces
+#from ckanext.dcat.profiles import DCT
+#from ckanext.dcat.profiles import namespaces as dcat_namespaces
+
+from ckanext.dcat.profiles import DCAT, DCT, FOAF, SKOS, RDFS, RDF, ADMS, VCARD, LOCN
 
 from ckanext.dcatapit import interfaces
 from ckanext.dcatapit.commands import DataException, ConfigException
@@ -27,7 +33,20 @@ CLVAPIT = Namespace('https://w3id.org/italia/onto/CLV/')
 DCATAPIT = Namespace('http://dati.gov.it/onto/dcatapit#')
 XKOS = Namespace('http://rdf-vocabulary.ddialliance.org/xkos#')
 
-namespaces = dcat_namespaces.copy()
+#namespaces = dcat_namespaces.copy()
+namespaces = {
+    'DCAT': DCAT,
+    'DCT': DCT, 
+    'FOAF': FOAF,
+    'SKOS': SKOS,
+    'RDFS': RDFS,
+    'RDF': RDF,
+    'ADMS': ADMS,
+    'VCARD': VCARD,
+    'LOCN': LOCN
+}
+
+
 namespaces.update( {
     'clvapit': CLVAPIT,
     'dcatapit': DCATAPIT,
@@ -116,7 +135,6 @@ def load(g, name, uri, eurovoc):
         ret['subthemes_created'] = Subtheme.count()
         Session.commit()
         return ret
-
     return do_load(g, name)
 
 
@@ -136,7 +154,8 @@ def do_load(g, vocab_name: str):
             log.error(f'Unknown action {action}')
 
     if vocab_name == LANGUAGE_THEME_NAME:
-        for offered_language in config.get('ckan.locales_offered', 'it').split(' '):
+        # for offered_language in config.get('ckan.locales_offered', 'it').split(' '):
+          for offered_language in config.get('ckan.locales_offered', 'it'):
             if offered_language not in LANGUAGE_IMPORT_FILTER:
                 log.info(
                     f"'{offered_language}' language is fitlered out in this plugin "

@@ -55,11 +55,8 @@ dcatapit.templated_input = {
             $('.add_new_container', ctx).each(function(idx, elm){
                 var add_with_list = $($(elm).data("add-with"));
 
-
                 add_with_list.each(function(ydx, add_with_elm){
                     var add_with = $(add_with_elm);
-                    
-                    // , $(elm).parent());
                     var tmpl = $($(elm).data('add-template'), $(elm).parent());
 
                     // marker to check if we didn't add handlers already
@@ -72,31 +69,57 @@ dcatapit.templated_input = {
                     */
                     var h = function(evt){
                         var t = that.add_row(tmpl, elm, []);
+                        // ensure hidden aggregated input is updated after adding a new row
+                        try { that.extract_values(); } catch (e) {}
                     }
                     add_with.data('has-container-cb', true);
 
                     add_with.click(h);
                 });
             });
+
             var remove_h = function(evt){
                 var elm = $(evt.delegateTarget);
+                var out;
                 if (elm.data('remove-parent') !== undefined){
-                    var out = elm.parents(elm.data('remove-parent'));
+                    out = elm.parents(elm.data('remove-parent'));
                 } else {
-                    var out = elm.parent();
+                    out = elm.parent();
                 }
                 out.remove();
-
+                // update aggregated hidden input after removing row
+                try { that.extract_values(); } catch (e) {}
             }
             $('.remove', ctx).click(remove_h);
+
+            // keep hidden aggregated input up-to-date on any input/select change inside the templated area
+            // debounce updates to avoid excessive work while typing
+            var _debounce_timer = null;
+            var _schedule_update = function(){
+                if (_debounce_timer) {
+                    clearTimeout(_debounce_timer);
+                }
+                _debounce_timer = setTimeout(function(){
+                    try { that.extract_values(); } catch (e) {}
+                }, 150);
+            };
+            $(ctx).on('change keyup', 'input, select, textarea', function(){ _schedule_update(); });
         },
 
         add_row: function(template, container, values){
+            var that = this;
             var t = template.clone().removeClass('template');
 
-            $(container).append(t[0]);
+            // append cloned template into the container
+            $(container).append(t);
+
+            // populate the new row with initial values and wire its handlers
             this.add_values(t, values);
             this.add_handlers(t);
+
+            // ensure aggregated hidden input is updated after adding a new row
+            try { that.extract_values(); } catch (e) {}
+
             return t;
         },
 
@@ -149,7 +172,13 @@ dcatapit.templated_input = {
             // do any postprocessing if needed of extracted values
             out = this.post_extract(out);
 
-            this.el.attr('value', JSON.stringify(out));
+            // ensure the live input value is updated for form submission
+            try {
+                this.el.val(JSON.stringify(out));
+            } catch (e) {
+                // fallback to attribute set if val is not available
+                this.el.attr('value', JSON.stringify(out));
+            }
             return out;
         },
         post_extract: function(values){
@@ -175,17 +204,18 @@ ckan.module('dcatapit-conforms-to', function($){
         /** 
             add submit event handler to disable input elements for elm
         */
-        add_form_handlers: function(elm){
-            var that = this;
-            elm.parents('form').submit(
-                function(){
-                        var inputs = $('.conforms_to input', elm);
-                        inputs.attr('disabled', true);
-                        $('input[name=conforms_to]', elm).attr('disabled', false);
-                        that.extract_values();
-                   }
-                 )
-        },
+                add_form_handlers: function(elm){
+                        var that = this;
+                        elm.parents('form').submit(
+                                function(){
+                                                // extract current values first, then disable internal inputs
+                                                that.extract_values();
+                                                var inputs = $('.conforms_to input', elm);
+                                                inputs.prop('disabled', true);
+                                                $('input[name=conforms_to]', elm).prop('disabled', false);
+                                     }
+                                 )
+                },
         sub_add_values: function(ui, values){
 
             for (var k in values){
@@ -201,7 +231,7 @@ ckan.module('dcatapit-conforms-to', function($){
                         var refdoc_val = val[i];
                         var to_add = refdoc_ui.clone().removeClass('template');
                         refdocs_container.append(to_add);
-                        $('input', to_add).attr('value', refdoc_val);
+                        $('input', to_add).val(refdoc_val);
 
                     }
 
@@ -213,7 +243,7 @@ ckan.module('dcatapit-conforms-to', function($){
                         var local_val = val;
                     }
 
-                    ui.find('input[name=' + input_name + ']').attr('value', local_val);
+                    ui.find('input[name=' + input_name + ']').val(local_val);
                     ui.attr('lang', this.lang);
                 }
             }
@@ -268,17 +298,17 @@ ckan.module('dcatapit-alternate-identifier', function($){
         /** 
             add submit event handler to disable input elements for elm
         */
-        add_form_handlers: function(elm){
-            var that = this;
-            elm.parents('form').submit(
-                function(){
-                        var inputs = $('.alternate_identifier input', elm);
-                        inputs.attr('disabled', true);
-                        $('input[name=alternate_identifier]', elm).attr('disabled', false);
-                        that.extract_values();
-                   }
-                 )
-        },
+                add_form_handlers: function(elm){
+                        var that = this;
+                        elm.parents('form').submit(
+                                function(){
+                                                that.extract_values();
+                                                var inputs = $('.alternate_identifier input', elm);
+                                                inputs.prop('disabled', true);
+                                                $('input[name=alternate_identifier]', elm).prop('disabled', false);
+                                     }
+                                 )
+                },
 
         extract_from_each_element: function(idx, elm, out, lang){
                 var elm = $(elm);
@@ -322,13 +352,13 @@ ckan.module('dcatapit-alternate-identifier', function($){
                         }
 
                         var input_name = this.options.input_prefix + a;
-                        ui.find('input[name=' + input_name + ']').attr('value', local_val);
+                        ui.find('input[name=' + input_name + ']').val(local_val);
                         ui.attr('lang', this.lang);
                     }
                 } else {
                         var local_val = val;
                         var input_name = this.options.input_prefix + k;
-                        ui.find('input[name=' + input_name + ']').attr('value', local_val);
+                        ui.find('input[name=' + input_name + ']').val(local_val);
                         ui.attr('lang', this.lang);
                 }
             }
@@ -350,17 +380,17 @@ ckan.module('dcatapit-creator', function($){
         /** 
             add submit event handler to disable input elements for elm
         */
-        add_form_handlers: function(elm){
-            var that = this;
-            elm.parents('form').submit(
-                function(){
-                        var inputs = $('input', elm);
-                        inputs.attr('disabled', true);
-                        $('input[name=creator]', elm).attr('disabled', false);
-                        that.extract_values();
-                   }
-                 )
-        },
+                add_form_handlers: function(elm){
+                        var that = this;
+                        elm.parents('form').submit(
+                                function(){
+                                                that.extract_values();
+                                                var inputs = $('input', elm);
+                                                inputs.prop('disabled', true);
+                                                $('input[name=creator]', elm).prop('disabled', false);
+                                     }
+                                 )
+                },
 
         extract_from_each_element: function(idx, elm, out, lang){
                 var elm = $(elm);
@@ -388,7 +418,7 @@ ckan.module('dcatapit-creator', function($){
                     local_val = val[this.lang];
                 }
                 var input_name = k //this.options.input_prefix + k;
-                ui.find('input[name=' + input_name + ']').attr('value', local_val);
+                ui.find('input[name=' + input_name + ']').val(local_val);
                 ui.attr('lang', this.lang);
             }
         },
@@ -407,17 +437,17 @@ ckan.module('dcatapit-temporal-coverage', function($){
         /** 
             add submit event handler to disable input elements for elm
         */
-        add_form_handlers: function(elm){
-            var that = this;
-            elm.parents('form').submit(
-                function(){
-                        var inputs = $('input', elm);
-                        inputs.attr('disabled', true);
-                        $('input[name=temporal_coverage]', elm).attr('disabled', false);
-                        that.extract_values();
-                   }
-                 )
-        },
+                add_form_handlers: function(elm){
+                        var that = this;
+                        elm.parents('form').submit(
+                                function(){
+                                                that.extract_values();
+                                                var inputs = $('input', elm);
+                                                inputs.prop('disabled', true);
+                                                $('input[name=temporal_coverage]', elm).prop('disabled', false);
+                                     }
+                                 )
+                },
 
         extract_from_each_element: function(idx, elm, out, lang){
                 var elm = $(elm);
@@ -435,7 +465,7 @@ ckan.module('dcatapit-temporal-coverage', function($){
                 var val = values[k];
                 var local_val = val;
                 var input_name = k //this.options.input_prefix + k;
-                ui.find('input[name=' + input_name + ']').attr('value', local_val);
+                ui.find('input[name=' + input_name + ']').val(local_val);
                 ui.attr('lang', this.lang);
             }
         },
@@ -562,10 +592,10 @@ ckan.module('geonames', function($){
                 return;
             }
             var url = 'https://geonames.org/' + details.geonameId;
-            this.store.attr('value', url);
+            this.store.val(url);
             //this.display.html(url);
             if (is_init == true){
-                $(this.el).attr('value', details.name + ',' + details.adminName1 + ', '+ details.countryName);
+                $(this.el).val(details.name + ',' + details.adminName1 + ', '+ details.countryName);
             }
         }
 
@@ -596,17 +626,17 @@ ckan.module('dcatapit-theme', function($){
         /** 
             add submit event handler to disable input elements for elm
         */
-        add_form_handlers: function(elm){
-            var that = this;
-            elm.parents('form').submit(
-                function(){
-                        var inputs = $('select', elm);
-                        inputs.attr('disabled', true);
-                        $('input[name=themes_aggregate]', elm).attr('disabled', false);
-                        that.extract_values();
-                   }
-                 )
-        },
+                add_form_handlers: function(elm){
+                        var that = this;
+                        elm.parents('form').submit(
+                                function(){
+                                                that.extract_values();
+                                                var inputs = $('select', elm);
+                                                inputs.prop('disabled', true);
+                                                $('input[name=themes_aggregate]', elm).prop('disabled', false);
+                                     }
+                                 )
+                },
 
         extract_from_each_element: function(idx, elm, out, lang){
                 var elm = $(elm);

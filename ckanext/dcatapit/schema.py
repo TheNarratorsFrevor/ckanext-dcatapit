@@ -145,8 +145,7 @@ def get_custom_package_schema():
             # aggregation of themes and subthemes
             # Format: [ {'theme' : theme_short_name, 'subthemes': [subthemes URIs...]}, ...]
             'name': FIELD_THEMES_AGGREGATE,
-            # 'validator': ['not_empty', 'dcatapit_subthemes'],
-            'validator': ['dcatapit_subthemes'],
+            'validator': ['not_empty', 'dcatapit_subthemes'],
             'element': 'themes',
             'type': 'vocabulary',
             'vocabulary_name': 'eu_themes',
@@ -265,12 +264,11 @@ def get_custom_package_schema():
 
             'help': _('package_temporal_coverage_help')
         },
-
         {
             'name': 'rights_holder',
             'element': 'rights_holder',
             'label': _('Rights Holder'),
-            'is_required': False,
+            'is_required': True,
             'read_only': True,
             'couples': [
                 {
@@ -386,8 +384,18 @@ def get_custom_resource_schema():
             'is_required': False
         },
         {
+            'name': 'access_url',
+            'validator': ['not_empty'],
+            'element': 'input',
+            'type': 'url',
+            'label': _('Access URL'),
+            'placeholder': _('URL to access the resource'),
+            'is_required': True,
+            'help': _('The URL where the resource can be accessed (dcat:accessURL)')
+        },
+        {
             'name': 'license_type',
-            'validator': ['ignore_missing'],
+            'validator': ['not_empty'],
             'element': 'licenses_tree',
             'label': _('License'),
             'placeholder': _('license type'),

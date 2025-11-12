@@ -214,9 +214,9 @@ Old implementation of the couple element (one element with comma separated value
         {{ add_button(_("Add a Theme"), ' '.join(classes), help, is_required=is_required) }}
 
 
-        <input type="hidden" name="themes_aggregate" value="{{ value or list()| safe }}" data-module="dcatapit-theme"
-               data-module-template=".theme" data-module-container=".theme_container" data-module-lang="{{ lang }}"
-               data-module-input_prefix="" data-module-data_name="theme"/>
+     <input type="hidden" name="themes_aggregate" value="{{ h.json_dump(value or []) | safe }}" data-module="dcatapit-theme"
+         data-module-template=".theme" data-module-container=".theme_container" data-module-lang="{{ lang }}"
+         data-module-input_prefix="" data-module-data_name="theme"/>
 
     </div>
 {% endmacro %}
@@ -249,9 +249,9 @@ Old implementation of the couple element (one element with comma separated value
 
         {{ add_button(_("Add new Creator"), 'add_new_creator', help) }}
 
-        <input type="hidden" name="creator" value="{{ value or dict()| safe }}" data-module="dcatapit-creator"
-               data-module-template=".creator" data-module-container=".creator_container" data-module-lang="{{ lang }}"
-               data-module-input_prefix="" data-module-data_name="creator"/>
+     <input type="hidden" name="creator" value="{{ h.json_dump(value or []) | safe }}" data-module="dcatapit-creator"
+         data-module-template=".creator" data-module-container=".creator_container" data-module-lang="{{ lang }}"
+         data-module-input_prefix="" data-module-data_name="creator"/>
 
     </div>
 {% endmacro %}
@@ -288,11 +288,11 @@ Old implementation of the couple element (one element with comma separated value
         {{ add_button(_("Add new Temporal Coverage"), ' '.join(classes), help) }}
 
 
-        <input type="hidden" name="temporal_coverage" value="{{ value or dict()| safe }}"
-               data-module="dcatapit-temporal-coverage" data-module-template=".temporal-coverage"
-               data-module-container=".temporal-coverage_container" data-module-lang="{{ lang }}"
-               data-module-input_prefix="" data-module-data_name="temporal-coverage"
-               data-module-error="{{ error|join(',') }}"/>
+     <input type="hidden" name="temporal_coverage" value="{{ h.json_dump(value or []) | safe }}"
+         data-module="dcatapit-temporal-coverage" data-module-template=".temporal-coverage"
+         data-module-container=".temporal-coverage_container" data-module-lang="{{ lang }}"
+         data-module-input_prefix="" data-module-data_name="temporal-coverage"
+         data-module-error="{{ error|join(',') }}"/>
 
         {% if error and error is iterable %}
             <div class="errors">
@@ -334,10 +334,10 @@ Old implementation of the couple element (one element with comma separated value
 
         <div class="alternate_identifier_container add_new_container" data-add-with=".add_new_alternate_identifier"
              data-add-template=".alternate_identifier.template"></div>
-        <input type="hidden" name="alternate_identifier" value="{{ value or dict()| safe }}"
-               data-module="dcatapit-alternate-identifier" data-module-template=".alternate_identifier"
-               data-module-container=".alternate_identifier_container" data-module-lang="{{ lang }}"
-               data-module-input_prefix="alt_" data-module-data_name="alternate-identifier"/>
+     <input type="hidden" name="alternate_identifier" value="{{ h.json_dump(value or []) | safe }}"
+         data-module="dcatapit-alternate-identifier" data-module-template=".alternate_identifier"
+         data-module-container=".alternate_identifier_container" data-module-lang="{{ lang }}"
+         data-module-input_prefix="alt_" data-module-data_name="alternate-identifier"/>
 
         {{ add_button(_("Add new identifier"), 'add_new_alternate_identifier', help) }}
 
@@ -391,10 +391,10 @@ Old implementation of the couple element (one element with comma separated value
         <div class="conforms_to_container add_new_container" data-add-with=".add_new_conforms_to"
              data-add-template=".conforms_to.template"></div>
 
-        <input type="hidden" name="conforms_to" value="{{ value or dict()| safe }}" data-module="dcatapit-conforms-to"
-               data-module-template=".conforms_to" data-module-container=".conforms_to_container"
-               data-module-lang="{{ lang }}" data-module-input_prefix="conforms_to_"
-               data-module-data_name="conforms-to"/>
+     <input type="hidden" name="conforms_to" value="{{ h.json_dump(value or []) | safe }}" data-module="dcatapit-conforms-to"
+         data-module-template=".conforms_to" data-module-container=".conforms_to_container"
+         data-module-lang="{{ lang }}" data-module-input_prefix="conforms_to_"
+         data-module-data_name="conforms-to"/>
         {{ add_button(_("Add new conforms to"), 'add_new_conforms_to', help) }}
     </div>
 {% endmacro %}

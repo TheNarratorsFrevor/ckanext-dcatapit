@@ -3,7 +3,7 @@
 {% set org_fields = h.get_dcatapit_organization_schema() %}
 
 {% block custom_fields %}
-	{% snippet 'snippets/dcatapit_form_fields.html', data=data, errors=errors, schema_fields=org_fields %}
-
     {% if action == "new" or action == "edit" %}{{ super() }}{% endif %}
+
+    {% snippet 'snippets/dcatapit_form_fields.html', data=data, errors=errors, schema_fields=org_fields %}
 {% endblock %}

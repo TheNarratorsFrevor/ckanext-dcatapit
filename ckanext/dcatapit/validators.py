@@ -15,7 +15,6 @@ DEFAULT_LANG = config.get('ckan.locale_default', 'en')
 log = logging.getLogger(__file__)
 available_locales = get_locales()
 
-
 def is_blank(string):
     return not (string and string.strip())
 
@@ -104,17 +103,28 @@ def dcatapit_conforms_to(value, context):
     """
     if not value:
         raise Invalid(_('Conforms to value should not be empty'))
-    try:
-        data = json.loads(value)
-    except (TypeError, ValueError):
+        # allow empty value
+        #pass
+    # Accept already-parsed dict/list input (submitted by some forms or
+    # internal calls) as well as JSON strings.
+    if isinstance(value, (dict, list)):
+        data = value
+    else:
         try:
-            old_data = value.split(',')
-            return json.dumps([{'identifier': v,
-                                'title': {},
-                                'description': {},
-                                'referenceDocumentation': []} for v in old_data])
-        except (AttributeError, TypeError, ValueError):
-            raise Invalid(_('Invalid payload for conforms_to'))
+            data = json.loads(value)
+        except (TypeError, ValueError):
+            try:
+                old_data = value.split(',')
+                return json.dumps([{'identifier': v,
+                                    'title': {},
+                                    'description': {},
+                                    'referenceDocumentation': []} for v in old_data])
+            except (AttributeError, TypeError, ValueError):
+                raise Invalid(_('Invalid payload for conforms_to'))
+    # allow single-object payloads (dict) by normalizing to a list
+    if isinstance(data, dict):
+        data = [data]
+
     if not isinstance(data, list):
         raise Invalid(_('List expected for conforms_to values'))
 
@@ -204,14 +214,25 @@ def dcatapit_alternate_identifier(value, context):
     """
     if not value:
         raise Invalid(_('Alternate Identifier value should not be empty'))
-    try:
-        data = json.loads(value)
-    except (TypeError, ValueError):
+        # allow empty value
+        #pass 
+    # Accept already-parsed dict/list values
+    if isinstance(value, (dict, list)):
+        data = value
+    else:
         try:
-            old_data = value.split(',')
-            return json.dumps([{'identifier': v, 'agent': {}} for v in old_data])
-        except (AttributeError, TypeError, ValueError):
-            raise Invalid(_('Invalid payload for alternate_identifier'))
+            data = json.loads(value)
+        except (TypeError, ValueError):
+            try:
+                old_data = value.split(',')
+                return json.dumps([{'identifier': v, 'agent': {}} for v in old_data])
+            except (AttributeError, TypeError, ValueError):
+                raise Invalid(_('Invalid payload for alternate_identifier'))
+
+    # normalize single object to list
+    if isinstance(data, dict):
+        data = [data]
+
     if not isinstance(data, list):
         raise Invalid(_('Invalid payload type {} for alternate_identifier').format(type(data)))
 
@@ -251,15 +272,27 @@ def dcatapit_creator(value, context):
 
     """
     if not value:
-        raise Invalid(_('Creator value should not be empty'))
-    try:
-        data = json.loads(value)
-    except (TypeError, ValueError):
+        return
+        #raise Invalid(_('Creator value should not be empty'))
+        
+
+    # Accept dict/list values provided by forms or internal code
+    if isinstance(value, (dict, list)):
+        data = value
+    else:
         try:
-            old_data = value.split(',')
-            return json.dumps([{'creator_name': old_data[0], 'creator_identifier': old_data[1]}])
-        except (AttributeError, TypeError, ValueError):
-            raise Invalid(_('Invalid creator payload'))
+            data = json.loads(value)
+        except (TypeError, ValueError):
+            try:
+                old_data = value.split(',')
+                return json.dumps([{'creator_name': old_data[0], 'creator_identifier': old_data[1]}])
+            except (AttributeError, TypeError, ValueError):
+                raise Invalid(_('Invalid creator payload'))
+
+    # normalize single creator dict to list
+    if isinstance(data, dict):
+        data = [data]
+
     if not isinstance(data, list):
         raise Invalid(_('Invalid payload type {} for creator').format(type(data)))
 
@@ -335,11 +368,21 @@ def dcatapit_temporal_coverage(value, context):
     Validates temporal coverage data
     """
     if not value:
-        raise Invalid(_('Temporal coverage value should not be empty'))
-    try:
-        data = json.loads(value)
-    except (TypeError, ValueError):
-        raise Invalid(_('Temporal coverage value is not valid'))
+        #raise Invalid(_('Temporal coverage value should not be empty'))
+        return None
+
+    # Accept dict/list values directly
+    if isinstance(value, (dict, list)):
+        data = value
+    else:
+        try:
+            data = json.loads(value)
+        except (TypeError, ValueError):
+            raise Invalid(_('Temporal coverage value is not valid'))
+
+    # normalize single dict to list
+    if isinstance(data, dict):
+        data = [data]
 
     if not isinstance(data, list):
         raise Invalid(_('Temporal coverage values should be in a list, got {}').format(type(data)))

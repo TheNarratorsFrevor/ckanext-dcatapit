@@ -6,6 +6,7 @@ from rdflib.namespace import RDF, SKOS
 
 import ckan.logic as logic
 from ckan.common import config
+# from ckantoolkit import config
 from ckan.lib.i18n import get_lang, get_locales
 
 from ckanext.dcat.profiles import (
@@ -600,17 +601,30 @@ class ItalianDCATAPProfile(RDFProfile):
         # replace languages
         value = self._get_dict_value(dataset_dict, 'language')
         if value:
-            for lang in value.split(','):
+            # support list/tuple values or comma-separated strings (possibly with {..} braces)
+            if isinstance(value, (list, tuple)):
+                langs = [str(l) for l in value]
+            else:
+                # normalize and split strings such as "it,en" or "{it,en}"
+                langs = [l for l in str(value).replace('{', '').replace('}', '').split(',') if l.strip()]
+
+            for lang in langs:
                 self.g.remove((dataset_ref, DCT.language, Literal(lang)))
-                lang = lang.replace('{', '').replace('}', '')
+                lang = str(lang).replace('{', '').replace('}', '')
                 self.g.add((dataset_ref, DCT.language, URIRef(LANG_BASE_URI + lang)))
                 # self._add_concept(LANG_CONCEPTS, lang)
 
         # add spatial (EU URI)
         value = self._get_dict_value(dataset_dict, 'geographical_name')
         if value:
-            for gname in value.split(','):
-                gname = gname.replace('{', '').replace('}', '')
+            # support list/tuple values or comma-separated strings (possibly with {..} braces)
+            if isinstance(value, (list, tuple)):
+                gnames = [str(g) for g in value]
+            else:
+                gnames = [g for g in str(value).replace('{', '').replace('}', '').split(',') if g.strip()]
+
+            for gname in gnames:
+                gname = str(gname).replace('{', '').replace('}', '')
 
                 dct_location = BNode()
                 self.g.add((dataset_ref, DCT.spatial, dct_location))
@@ -909,7 +923,8 @@ class ItalianDCATAPProfile(RDFProfile):
     def _add_multilang_values(self, loc_dict, loc_mapping, exclude_default_lang=False):
         if loc_dict:
             default_lang = get_lang() or DEFAULT_LANG
-            default_lang = default_lang.split('_')[0]
+            # ensure default_lang is string-like before splitting
+            default_lang = str(default_lang).split('_')[0]
             for field_name, lang_dict in loc_dict.items():
                 try:
                     ref, pred, exclude = loc_mapping.get(field_name, (None, None, exclude_default_lang))
@@ -922,7 +937,8 @@ class ItalianDCATAPProfile(RDFProfile):
                     log.warning('Multilang field not mapped "%s"', field_name)
                     continue
                 for lang, value in lang_dict.items():
-                    lang = lang.split('_')[0]  # rdflib is quite picky in lang names
+                    # ensure lang is string-like
+                    lang = str(lang).split('_')[0]  # rdflib is quite picky in lang names
 
                     if exclude and lang == default_lang:
                         continue
@@ -1070,7 +1086,8 @@ class ItalianDCATAPProfile(RDFProfile):
 
         agent = BNode()
         rlang = get_lang() or DEFAULT_LANG
-        rlang = rlang.split('_')[0]
+        # ensure rlang is string-like before splitting
+        rlang = str(rlang).split('_')[0]
 
         self.g.add((agent, RDF['type'], DCATAPIT.Agent))
         self.g.add((agent, RDF['type'], FOAF.Agent))
@@ -1147,7 +1164,8 @@ class ItalianDCATAPProfile(RDFProfile):
             self.g.add((concept, RDF['type'], SKOS.Concept))
 
             for lang, label in loc_dict.items():
-                lang = lang.split('_')[0]  # rdflib is quite picky in lang names
+                # ensure lang is string-like
+                lang = str(lang).split('_')[0]  # rdflib is quite picky in lang names
                 self.g.add((concept, SKOS.prefLabel, Literal(label, lang=lang)))
 
             return True
@@ -1201,7 +1219,13 @@ class ItalianDCATAPProfile(RDFProfile):
         # language
         langs = config.get('ckan.locales_offered', 'it')
 
-        for lang_offered in langs.split():
+        # support list/tuple or whitespace-separated string
+        if isinstance(langs, (list, tuple)):
+            offered = [str(l) for l in langs]
+        else:
+            offered = [l for l in str(langs).split() if l]
+
+        for lang_offered in offered:
             lang_code = lang_mapping_ckan_to_voc.get(lang_offered)
             if lang_code:
                 self.g.add((catalog_ref, DCT.language, URIRef(LANG_BASE_URI + lang_code)))

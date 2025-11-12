@@ -24,7 +24,11 @@
                       {% set attrs =  {'class': 'form-control', 'style': 'width:50%'} %}
                   {% endif %}
                   {% set attrs = field.attrs or {} %}
-                  {% set options = h.get_vocabulary_items(field.vocabulary_name) if field.type == 'vocabulary' else field.options %}
+                          {% set options = h.get_vocabulary_items(field.vocabulary_name) if field.type == 'vocabulary' else field.options %}
+                          {# Fallback for frequency when vocabulary not loaded: provide UNKNOWN option #}
+                          {% if field.name == 'frequency' and (not options or options|length == 0) %}
+                                {% set options = [{'value': 'UNKNOWN', 'text': _('UNKNOWN')}] %}
+                          {% endif %}
 
                   {{ dform.select(field.name,
                                   label=field.label,
