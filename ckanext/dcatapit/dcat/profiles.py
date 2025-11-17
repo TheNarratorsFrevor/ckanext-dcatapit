@@ -1,8 +1,9 @@
 import json
 import logging
+import urllib.parse as urllib_parse
 
 from rdflib import BNode, Literal, URIRef
-from rdflib.namespace import RDF, SKOS
+from rdflib.namespace import RDF, SKOS, RDFS
 
 import ckan.logic as logic
 from ckan.common import config
@@ -590,6 +591,32 @@ class ItalianDCATAPProfile(RDFProfile):
         for prefix, namespace in it_namespaces.items():
             g.bind(prefix, namespace)
 
+        # Ensure DCAT-AP-IT and SKOS classes are declared in the catalog graph.
+        # Some validators expect class declarations (rdfs:Class / owl:Class)
+        # to be present in the document or dereferenceable from the ontology.
+        # Embedding minimal declarations here makes the catalog self-contained
+        # for validation purposes without changing semantics.
+        try:
+            classes_to_declare = [
+                DCATAPIT.Catalog,
+                DCATAPIT.Agent,
+                DCATAPIT.Dataset,
+                DCATAPIT.Distribution,
+                DCATAPIT.LicenseDocument,
+                DCATAPIT.Organization,
+                SKOS.Concept,
+            ]
+            for cls in classes_to_declare:
+                g.add((cls, RDF.type, OWL.Class))
+                # also declare as rdfs:Class for validators that look for RDFS
+                try:
+                    g.add((cls, RDF.type, RDFS.Class))
+                except Exception:
+                    # ignore if RDFS not available for some reason
+                    pass
+        except Exception:
+            log.exception('Failed to declare DCAT-AP-IT classes in catalog graph')
+
         # add a further type for the Dataset node
         g.add((dataset_ref, RDF.type, DCATAPIT.Dataset))
 
@@ -667,7 +694,32 @@ class ItalianDCATAPProfile(RDFProfile):
         else:
             landing_page_uri = dataset_uri(dataset_dict)  # TODO: preserve original URI if harvested
 
-        self.g.add((dataset_ref, DCAT.landingPage, URIRef(landing_page_uri)))
+        # Defensive sanitation: sometimes dataset name / landing page
+        # information may accidentally contain a serialized list (or an
+        # URL-encoded list). Try to recover a sensible first element.
+        try:
+            raw = landing_page_uri
+            if isinstance(raw, str):
+                # decode percent-encoding such as "%5B...%5D"
+                decoded = urllib_parse.unquote(raw)
+                if decoded.strip().startswith('['):
+                    parsed = json.loads(decoded)
+                    if isinstance(parsed, list) and parsed:
+                        first = parsed[0]
+                        if isinstance(first, str):
+                            if first.startswith('/'):
+                                landing_page_uri = catalog_uri().rstrip('/') + first
+                            elif first.startswith('http'):
+                                landing_page_uri = first
+        except Exception:
+            # keep original landing_page_uri as a safe fallback
+            log.debug('Could not sanitize landing page URI: %r', landing_page_uri)
+
+        # Finally add the landing page as a URIRef (best-effort)
+        try:
+            self.g.add((dataset_ref, DCAT.landingPage, URIRef(landing_page_uri)))
+        except Exception:
+            log.exception('Failed to add landingPage for dataset %r', dataset_dict.get('id'))
 
         # conformsTo
         self.g.remove((dataset_ref, DCT.conformsTo, None))
@@ -861,6 +913,22 @@ class ItalianDCATAPProfile(RDFProfile):
 
             # Add the DCATAPIT type
             g.add((distribution, RDF.type, DCATAPIT.Distribution))
+
+            # Add access/download URLs explicitly as URIRefs so the serializer
+            # emits rdf:resource="..." instead of nested rdfs:Resource nodes.
+            access_url = resource_dict.get('url') or resource_dict.get('access_url') or resource_dict.get('accessURL')
+            if access_url:
+                try:
+                    self.g.add((distribution, DCAT.accessURL, URIRef(access_url)))
+                except Exception:
+                    log.debug('Invalid access URL for resource %r: %r', resource_dict.get('id'), access_url)
+
+            download_url = resource_dict.get('download_url') or resource_dict.get('downloadURL')
+            if download_url:
+                try:
+                    self.g.add((distribution, DCAT.downloadURL, URIRef(download_url)))
+                except Exception:
+                    log.debug('Invalid download URL for resource %r: %r', resource_dict.get('id'), download_url)
 
             # format
             self._remove_node(resource_dict, distribution, ('format', DCT['format'], None, Literal))
@@ -1230,7 +1298,21 @@ class ItalianDCATAPProfile(RDFProfile):
             if lang_code:
                 self.g.add((catalog_ref, DCT.language, URIRef(LANG_BASE_URI + lang_code)))
 
-        self.g.remove((catalog_ref, DCT.language, Literal(config.get(DEFAULT_LANG))))
+        # Remove any literal default-language entry (normalize to authority URI)
+        try:
+            self.g.remove((catalog_ref, DCT.language, Literal(DEFAULT_LANG)))
+        except Exception:
+            # defensive: fallback if DEFAULT_LANG not present as literal
+            pass
+
+        # Normalize any remaining plain-literal language values into
+        # language authority URIs when possible (e.g. 'en' -> .../ENG).
+        for lang_literal in list(g.objects(catalog_ref, DCT.language)):
+            if isinstance(lang_literal, Literal):
+                mapped = lang_mapping_ckan_to_voc.get(str(lang_literal))
+                if mapped:
+                    g.remove((catalog_ref, DCT.language, lang_literal))
+                    g.add((catalog_ref, DCT.language, URIRef(LANG_BASE_URI + mapped)))
 
     def log_remove(self, key, pred):
         log.debug(f'Removing "{key}" type "{self.g.qname(pred)}"')
