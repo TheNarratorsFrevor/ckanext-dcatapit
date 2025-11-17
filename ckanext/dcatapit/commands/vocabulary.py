@@ -300,7 +300,21 @@ def do_load_vocab(g, vocab_name):
     concepts = []
 
     for concept, _pred, _conc in g.triples((None, None, SKOS.Concept)):
-        identifier = str(g.value(subject=concept, predicate=DC.identifier))
+        # Try to get a stable identifier for the concept. Avoid doing str(None)
+        # which yields the string 'None' and causes duplicate tag attempts.
+        raw_id = g.value(subject=concept, predicate=DC.identifier)
+        if raw_id is None:
+            # try dcterms identifier as fallback
+            try:
+                raw_id = g.value(subject=concept, predicate=DCT.identifier)
+            except Exception:
+                raw_id = None
+
+        if raw_id is None:
+            # fallback to the URI fragment
+            identifier = munge_tag(str(concept).split('/')[-1])
+        else:
+            identifier = str(raw_id)
 
         # Filtering the ckan locales not mapped in this plugin (subject: language theme)
         if vocab_name == LANGUAGE_THEME_NAME and identifier not in LANGUAGE_IMPORT_FILTER.values():
@@ -484,7 +498,7 @@ def _get_graph(path=None, url=None):
     return g
 
 
-def _detect_rdf_concept_scheme(g: Graph) -> (str, str):
+def _detect_rdf_concept_scheme(g: Graph) -> tuple[str, str]:
     try:
         cs = next(g.subjects(RDF.type, SKOS.ConceptScheme))
     except StopIteration:
