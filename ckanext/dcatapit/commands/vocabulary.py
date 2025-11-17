@@ -216,6 +216,8 @@ def do_load(g, vocab_name: str, skip_existing: bool=False):
                     log.info(f"Tag {vocab_name}::{tag_name} was created concurrently; using existing tag")
                     if skip_existing:
                         cnt.incr('tag_skipped_existing')
+                        # ensure we don't delete this tag later: record its id
+                        ids.append(tag.id)
                         continue
                     cnt.incr('tag_exists')
                 else:
@@ -227,7 +229,8 @@ def do_load(g, vocab_name: str, skip_existing: bool=False):
             if skip_existing:
                 log.info(f"Skipping existing tag {vocab_name}::{tag_name}")
                 cnt.incr('tag_skipped_existing')
-                # do not re-process labels for already-imported tags
+                # record id so it won't be deleted later; do not re-process labels
+                ids.append(tag.id)
                 continue
             cnt.incr('tag_exists')
 
