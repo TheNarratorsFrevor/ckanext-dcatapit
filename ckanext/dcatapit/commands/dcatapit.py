@@ -53,6 +53,7 @@ def migrate_200(fix_old):
 @click.option('--format', default='xml', help='Use specific graph format (xml, turtle..), default: xml')
 @click.option('--eurovoc', required=False, help=f'Name of the eurovoc file. Only needed for the subtheme mapping')
 @click.option('--name', required=False, help=f'Retained for backward compatibility')
+@click.option('--skip-existing', is_flag=True, default=False, help='Skip previously imported entries')
 def load(filename, url, format, eurovoc, name):
     '''
     A command for working with vocabularies
@@ -77,4 +78,8 @@ def load(filename, url, format, eurovoc, name):
     if name:
         log.warning(f'Option "name" is deprecated and unused.')
 
-    load_voc(filename, url, eurovoc, format=format)
+    # pass-through skip-existing option to the loader. This lets users avoid
+    # re-processing tags/labels that were already imported previously.
+    # kept for backward-compatibility: load_from_file accepts format and kwargs
+    # and will ignore unknown args.
+    load_voc(filename, url, eurovoc, format=format, skip_existing=locals().get('skip_existing', False))

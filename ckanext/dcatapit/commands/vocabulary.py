@@ -107,18 +107,24 @@ PLACES_IMPORT_FILTER = '^ITA_.+'
 
 
 def load_from_file(filename=None, url=None, eurovoc=None, *args, **kwargs):
+    """
+    Entry point used by the CLI. Accepts optional keyword `skip_existing` which
+    if True will avoid re-processing tags that already exist in the DB.
+    """
     try:
         g, name, uri, eurovoc = validate_vocabulary(filename, url, eurovoc)
     except ValueError as e:
         log.error(f'Error in handling vocabulary: {e}')
         return -1
 
-    results = load(g, name, uri, eurovoc)
+    skip_existing = kwargs.get('skip_existing', False)
+
+    results = load(g, name, uri, eurovoc, skip_existing=skip_existing)
 
     log.info(f'Results: {results}' )
 
 
-def load(g, name, uri, eurovoc):
+def load(g, name, uri, eurovoc, skip_existing=False):
 
     if name == LICENSES_NAME:
         ret = {'licenses_deleted': License.count()}
@@ -135,10 +141,10 @@ def load(g, name, uri, eurovoc):
         ret['subthemes_created'] = Subtheme.count()
         Session.commit()
         return ret
-    return do_load(g, name)
+    return do_load(g, name, skip_existing=skip_existing)
 
 
-def do_load(g, vocab_name: str):
+def do_load(g, vocab_name: str, skip_existing: bool=False):
     def _update_label_counter(cnt, action):
         action_mapping = {
             DBAction.CREATED: 'label_added',
@@ -197,10 +203,32 @@ def do_load(g, vocab_name: str):
         tag = model.Tag.by_name(tag_name, vocab)
         if tag is None:
             log.info(f"Adding tag {vocab_name}::{tag_name}")
-            tag = model.Tag(name=tag_name, vocabulary_id=vocab.id)
-            tag.save()
-            cnt.incr('tag_added')
+            try:
+                tag = model.Tag(name=tag_name, vocabulary_id=vocab.id)
+                tag.save()
+                cnt.incr('tag_added')
+            except IntegrityError:
+                # Another process may have inserted the same tag concurrently.
+                # Rollback and fetch the existing tag to continue gracefully.
+                Session.rollback()
+                tag = model.Session.query(model.Tag).filter_by(name=tag_name, vocabulary_id=vocab.id).first()
+                if tag:
+                    log.info(f"Tag {vocab_name}::{tag_name} was created concurrently; using existing tag")
+                    if skip_existing:
+                        cnt.incr('tag_skipped_existing')
+                        continue
+                    cnt.incr('tag_exists')
+                else:
+                    # Unexpected: IntegrityError but tag still not found
+                    log.error(f'IntegrityError creating tag {tag_name} but no existing tag found after rollback')
+                    cnt.incr('tag_error')
+                    continue
         else:
+            if skip_existing:
+                log.info(f"Skipping existing tag {vocab_name}::{tag_name}")
+                cnt.incr('tag_skipped_existing')
+                # do not re-process labels for already-imported tags
+                continue
             cnt.incr('tag_exists')
 
         log.debug(f'Creating multilang labels for tag {vocab_name}:{tag_name}')
