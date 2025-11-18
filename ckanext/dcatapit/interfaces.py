@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 
 import ckan.lib.search as search
-from ckantoolkit import config
+from ckan.common import config
 # from ckan.lib.base import model
 import ckan.model as model
 from ckan.lib.i18n import get_lang

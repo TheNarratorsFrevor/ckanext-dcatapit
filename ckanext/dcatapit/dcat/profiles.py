@@ -3,7 +3,7 @@ import logging
 import urllib.parse as urllib_parse
 
 from rdflib import BNode, Literal, URIRef
-from rdflib.namespace import RDF, SKOS, RDFS
+from rdflib.namespace import RDF, SKOS, RDFS, XSD
 
 import ckan.logic as logic
 from ckan.common import config
@@ -18,11 +18,13 @@ from ckanext.dcat.profiles import (
     LOCN,
     OWL,
     SCHEMA,
-    TIME,
     VCARD,
     RDFProfile,
 )
+
 from ckanext.dcat.utils import catalog_uri, dataset_uri, resource_uri
+from rdflib.namespace import Namespace
+TIME = Namespace('http://www.w3.org/2006/time#')
 
 import ckanext.dcatapit.helpers as helpers
 import ckanext.dcatapit.interfaces as interfaces
@@ -686,8 +688,13 @@ class ItalianDCATAPProfile(RDFProfile):
                            FREQ_BASE_URI)
         # self._add_concept(FREQ_CONCEPTS, dataset_dict.get('frequency', DEFAULT_VOCABULARY_KEY))
 
-        # replace landing page
-        self._remove_node(dataset_dict, dataset_ref, ('url', DCAT.landingPage, None, URIRef))
+        # replace landing page: remove any existing landingPage triples to avoid duplicates
+        try:
+            self.log_remove('landingPage', DCAT.landingPage)
+            g.remove((dataset_ref, DCAT.landingPage, None))
+        except Exception:
+            # defensive: continue even if removal fails
+            pass
         landing_page_uri = None
         if dataset_dict.get('name'):
             landing_page_uri = '{0}/dataset/{1}'.format(catalog_uri().rstrip('/'), dataset_dict['name'])
@@ -715,8 +722,13 @@ class ItalianDCATAPProfile(RDFProfile):
             # keep original landing_page_uri as a safe fallback
             log.debug('Could not sanitize landing page URI: %r', landing_page_uri)
 
-        # Finally add the landing page as a URIRef (best-effort)
+        # Finally add the landing page as a single URIRef (best-effort)
         try:
+            # ensure no duplicate landingPage triples remain
+            try:
+                g.remove((dataset_ref, DCAT.landingPage, None))
+            except Exception:
+                pass
             self.g.add((dataset_ref, DCAT.landingPage, URIRef(landing_page_uri)))
         except Exception:
             log.exception('Failed to add landingPage for dataset %r', dataset_dict.get('id'))
@@ -1149,8 +1161,24 @@ class ItalianDCATAPProfile(RDFProfile):
         try:
             agent_name, agent_id = agent_data
         except (TypeError, ValueError, IndexError,):
-            agent_name = self._get_dict_value(_dict, basekey + '_name', 'N/A')
-            agent_id = self._get_dict_value(_dict, basekey + '_identifier', 'N/A')
+            # prefer None/defaults rather than placeholder strings
+            agent_name = self._get_dict_value(_dict, basekey + '_name', None)
+            agent_id = self._get_dict_value(_dict, basekey + '_identifier', None)
+
+        # Fallback attempts when name/identifier missing or empty
+        if not agent_name or (isinstance(agent_name, str) and not agent_name.strip()) or str(agent_name).strip().lower() in ('n/a', 'unknown'):
+            # for publishers, prefer site title
+            if basekey == 'publisher':
+                agent_name = config.get('ckan.site_title') or config.get('ckan.site_name') or config.get('ckan.site_url') or agent_name
+            # if we have an organization id in dict, try to fetch its title
+            if isinstance(_dict, dict) and _dict.get('id'):
+                try:
+                    org_show = logic.get_action('organization_show')
+                    org = org_show({'ignore_auth': True}, {'id': _dict.get('id'), 'include_extras': True})
+                    agent_name = agent_name or org.get('title') or org.get('name')
+                except Exception:
+                    # best-effort fallback, ignore errors
+                    pass
 
         agent = BNode()
         rlang = get_lang() or DEFAULT_LANG
@@ -1175,12 +1203,15 @@ class ItalianDCATAPProfile(RDFProfile):
                     if lang == rlang and not _found_no_lang():
                         self.g.add((agent, FOAF.name, Literal(aname)))
         else:
-            if use_default_lang:
-                # we may use web context language or lang from config
-                self.g.add((agent, FOAF.name, Literal(agent_name, lang=rlang)))
-            else:
-                self.g.add((agent, FOAF.name, Literal(agent_name)))
-        self.g.add((agent, DCT.identifier, Literal(agent_id)))
+            if agent_name:
+                if use_default_lang:
+                    # we may use web context language or lang from config
+                    self.g.add((agent, FOAF.name, Literal(agent_name, lang=rlang)))
+                else:
+                    self.g.add((agent, FOAF.name, Literal(agent_name)))
+            # only add identifier if it is meaningful
+        if agent_id and str(agent_id).strip() and str(agent_id).strip().lower() not in ('n/a', 'unknown'):
+            self.g.add((agent, DCT.identifier, Literal(agent_id)))
 
         return agent
 
@@ -1256,20 +1287,49 @@ class ItalianDCATAPProfile(RDFProfile):
         g.add((catalog_ref, FOAF.homepage, URIRef(catalog_uri() + '/#')))
 
         # publisher
-        pub_agent_name = config.get('ckanext.dcatapit_configpublisher_name', 'unknown')
-        pub_agent_id = config.get('ckanext.dcatapit_configpublisher_code_identifier', 'unknown')
+        pub_agent_name = config.get('ckanext.dcatapit_config.publisher_name') or ''
+        pub_agent_id = config.get('ckanext.dcatapit_config.publisher_code_identifier') or ''
+
+        # fallback to site info when explicit config not provided
+        if not pub_agent_name or str(pub_agent_name).strip().lower() in ('unknown', 'n/a'):
+            pub_agent_name = config.get('ckan.site_title') or config.get('ckan.site_name') or config.get('ckan.site_url') or ''
+        if not pub_agent_id or str(pub_agent_id).strip().lower() in ('unknown', 'n/a'):
+            pub_agent_id = config.get('ckan.site_id') or (config.get('ckan.site_url') and config.get('ckan.site_url').rstrip('/').split('/')[-1]) or ''
 
         agent = BNode()
         self.g.add((agent, RDF['type'], DCATAPIT.Agent))
         self.g.add((agent, RDF['type'], FOAF.Agent))
         self.g.add((catalog_ref, DCT.publisher, agent))
-        self.g.add((agent, FOAF.name, Literal(pub_agent_name)))
-        self.g.add((agent, DCT.identifier, Literal(pub_agent_id)))
+        if pub_agent_name:
+            self.g.add((agent, FOAF.name, Literal(pub_agent_name)))
+        if pub_agent_id:
+            self.g.add((agent, DCT.identifier, Literal(pub_agent_id)))
 
-        # issued date
-        issued = config.get('ckanext.dcatapit_config.catalog_issued', '1900-01-01')
-        if issued:
-            self._add_date_triple(catalog_ref, DCT.issued, issued)
+        # catalog metadata (issued/description/language)
+        catalog_issued = config.get('ckanext.dcatapit_config.catalog_issued')
+        if catalog_issued:
+            try:
+                g.add((catalog_ref, DCT.issued, Literal(catalog_issued, datatype=XSD.date)))
+            except Exception:
+                # fallback to helper if literal construction fails
+                try:
+                    self._add_date_triple(catalog_ref, DCT.issued, catalog_issued)
+                except Exception:
+                    log.exception('Failed to add catalog issued date')
+
+        # description (mandatory by DCAT-AP-IT) - prefer explicit config, then site description/title
+        catalog_description = config.get('ckanext.dcatapit_config.catalog_description') or config.get('ckan.site_description') or config.get('ckan.site_title')
+        if catalog_description:
+            # declare as Italian text by default (explicit values can override)
+            g.add((catalog_ref, DCT.description, Literal(catalog_description, lang='it')))
+
+        # explicit catalog language (authority URI expected)
+        catalog_lang = config.get('ckanext.dcatapit_config.catalog_language')
+        if catalog_lang:
+            try:
+                g.add((catalog_ref, DCT.language, URIRef(catalog_lang)))
+            except Exception:
+                log.exception('Failed to add catalog language URI')
 
         # theme taxonomy
 
@@ -1297,6 +1357,10 @@ class ItalianDCATAPProfile(RDFProfile):
             lang_code = lang_mapping_ckan_to_voc.get(lang_offered)
             if lang_code:
                 self.g.add((catalog_ref, DCT.language, URIRef(LANG_BASE_URI + lang_code)))
+
+        # Ensure at least a default language is present (ITA) to satisfy validators
+        if not list(g.objects(catalog_ref, DCT.language)):
+            self.g.add((catalog_ref, DCT.language, URIRef(LANG_BASE_URI + lang_mapping_ckan_to_voc.get('it', 'ITA'))))
 
         # Remove any literal default-language entry (normalize to authority URI)
         try:

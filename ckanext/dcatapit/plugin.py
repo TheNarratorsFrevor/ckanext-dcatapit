@@ -837,6 +837,13 @@ class DCATAPITConfigurerPlugin(plugins.SingletonPlugin):
     # IConfigurer
     plugins.implements(plugins.IConfigurer)
 
+    # IConfigDeclaration (CKAN 2.11+ requires declared config keys to avoid warnings)
+    try:
+        plugins.implements(plugins.IConfigDeclaration)
+    except Exception:
+        # older CKAN versions may not have the interface; safe no-op
+        pass
+
     # ITemplateHelpers
     plugins.implements(plugins.ITemplateHelpers)
 
@@ -870,6 +877,24 @@ class DCATAPITConfigurerPlugin(plugins.SingletonPlugin):
             'json_dump': helpers.json_dump,
 
         }
+
+    def declare_config_options(self, declaration, key):
+        """Declare configuration options so CKAN 2.11+ doesn't warn on startup.
+
+        The second parameter given to declaration.declare is only the default
+        value; real values are provided via environment (e.g. k8s configmap).
+        """
+        # dcatapit config
+        declaration.declare(key.ckanext.dcatapit_config.publisher_name, '')
+        declaration.declare(key.ckanext.dcatapit_config.publisher_code_identifier, '')
+        declaration.declare(key.ckanext.dcatapit_config.catalog_issued, '2025-01-01')
+        declaration.declare(key.ckanext.dcatapit_config.catalog_description, '')
+        declaration.declare(key.ckanext.dcatapit_config.catalog_language, 'http://publications.europa.eu/resource/authority/language/ITA')
+        declaration.declare(key.ckanext.dcatapit.form_tabs, 'True')
+
+        # geonames helpers (used by helpers.get_geonames_config)
+        declaration.declare(key.geonames.username, '')
+        declaration.declare(key.geonames.limits.countries, '')
 
 
 class DCATAPITGroupMapper(plugins.SingletonPlugin):

@@ -26,7 +26,7 @@ def test_get_dcatapit_organization_schema():
 def test_get_dcatapit_configuration_schema():
     schema = helpers.get_dcatapit_configuration_schema()
     ok_(schema)
-    eq_(schema[0].get('name'), 'ckanext.dcatapit_configpublisher_name')
+    eq_(schema[0].get('name'), 'ckanext.dcatapit_config.publisher_name')
 
 
 def test_get_dcatapit_resource_schema():

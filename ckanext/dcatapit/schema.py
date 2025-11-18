@@ -12,7 +12,7 @@ def get_custom_config_schema(show=True):
     if show:
         return [
             {
-                'name': 'ckanext.dcatapit_configpublisher_name',
+                'name': 'ckanext.dcatapit_config.publisher_name',
                 'validator': ['not_empty'],
                 'element': 'input',
                 'type': 'text',
@@ -22,7 +22,7 @@ def get_custom_config_schema(show=True):
                 'is_required': True
             },
             {
-                'name': 'ckanext.dcatapit_configpublisher_code_identifier',
+                'name': 'ckanext.dcatapit_config.publisher_code_identifier',
                 'validator': ['not_empty'],
                 'element': 'input',
                 'type': 'text',
@@ -46,11 +46,11 @@ def get_custom_config_schema(show=True):
     else:
         return [
             {
-                'name': 'ckanext.dcatapit_configpublisher_name',
+                'name': 'ckanext.dcatapit_config.publisher_name',
                 'validator': ['not_empty']
             },
             {
-                'name': 'ckanext.dcatapit_configpublisher_code_identifier',
+                'name': 'ckanext.dcatapit_config.publisher_code_identifier',
                 'validator': ['not_empty']
             },
             {

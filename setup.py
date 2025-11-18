@@ -95,6 +95,9 @@ setup(
 
         [ckan.rdf.profiles]
         it_dcat_ap=ckanext.dcatapit.dcat.profiles:ItalianDCATAPProfile
+            
+        [ckanext.dcat.profiles]
+        it_dcat_ap=ckanext.dcatapit.dcat.profiles:ItalianDCATAPProfile
 
         [paste.paster_command]
         vocabulary=ckanext.dcatapit.commands.dcatapit:DCATAPITCommands
